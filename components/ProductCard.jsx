@@ -1,57 +1,71 @@
+import { useContext } from 'react';
 import { useRouter } from 'expo-router';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
-import { colors } from '../theme';
+import { Image, Pressable, Text, View } from 'react-native';
+import { FavoritesContext } from '../context/FavoritesContext';
+import { styles } from '../style/productCard.styles';
 
-export default function ProductCard({
-    id, nombre, precio, categoria, imagen
-}) {
-
+export default function ProductCard(props) {
+    const { id } = props;
     const router = useRouter();
+    const { esFavorito, toggleFavorito } = useContext(FavoritesContext);
+
+    const nombre = props.nombre || props.title || 'Producto';
+    const precio = props.precio || props.price || 0;
+    const categoria = props.categoria || props.category || 'General';
+    const imagen = props.imagen || (props.productImg ? { uri: props.productImg } : null) || (props.image ? { uri: props.image } : null);
+
+    const imageSource = typeof imagen === 'string'
+        ? { uri: imagen }
+        : (imagen?.uri ? imagen : imagen || { uri: 'https://picsum.photos/400/400' });
+
+    const isFav = esFavorito(id);
+
     function abrirDetalle() {
         router.push({
             pathname: '/producto/[id]',
-            params: { id: String(id) }
+            params: {
+                id: String(id),
+                nombre,
+                precio: String(precio),
+                categoria,
+                imagenUri: imageSource?.uri || '',
+                descripcion: props.descripcion || props.description || ''
+            }
         });
     }
 
     return (
-        <Pressable style={styles.card} onPress={abrirDetalle}>
-            <Image source={imagen} style={styles.image} />
+        <Pressable
+            style={({ pressed }) => [styles.card, pressed && styles.cardPressed]}
+            onPress={abrirDetalle}
+        >
+            <Image source={imageSource} style={styles.image} resizeMode="cover" />
             <View style={styles.info}>
-                <Text style={styles.name}>{nombre}</Text>
-                <Text style={styles.price}>$ {precio}</Text>
+                <Text style={styles.name} numberOfLines={1}>{nombre}</Text>
+                <Text style={styles.price}>
+                    $ {typeof precio === 'number' ? precio.toLocaleString('es-AR') : precio}
+                </Text>
                 <Text style={styles.category}>{categoria}</Text>
             </View>
+            <Pressable
+                style={styles.favButton}
+                onPress={(e) => {
+                    e.stopPropagation?.();
+                    toggleFavorito({
+                        id,
+                        nombre,
+                        precio,
+                        categoria,
+                        imagen: imageSource,
+                        descripcion: props.descripcion || props.description || ''
+                    });
+                }}
+                hitSlop={12}
+            >
+                <Text style={[styles.starText, isFav && styles.starActive]}>
+                    {isFav ? '★' : '☆'}
+                </Text>
+            </Pressable>
         </Pressable>
     );
 }
-
-const styles = StyleSheet.create({
-    card: {
-        flexDirection: 'row',
-        backgroundColor: colors.surface,
-        borderRadius: 14,
-        overflow: 'hidden'
-    },
-    image: { width: 120, height: 120 },
-    info: {
-        flex: 1,
-        padding: 14,
-        justifyContent: 'center'
-    },
-    name: {
-        fontSize: 20,
-        fontWeight: '700',
-        color: colors.text
-    },
-    price: {
-        fontSize: 18,
-        fontWeight: '700',
-        color: colors.violet,
-        marginTop: 6
-    },
-    category: {
-        color: colors.muted,
-        marginTop: 4
-    }
-});
