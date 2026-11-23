@@ -1,6 +1,7 @@
 import { useContext } from 'react';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import {
+    Alert,
     Image,
     Pressable,
     ScrollView,
@@ -18,7 +19,12 @@ export default function ProductDetail() {
     const router = useRouter();
     const insets = useSafeAreaInsets();
     const { esFavorito, toggleFavorito } = useContext(FavoritesContext);
-    const { agregarAlCarrito, obtenerVecesComprado } = useContext(CartContext);
+    const {
+        agregarAlCarrito,
+        comprarProducto,
+        obtenerVecesComprado,
+        procesandoCompra
+    } = useContext(CartContext);
 
     const local = localProducts.find((item) => String(item.id) === String(params.id));
 
@@ -44,6 +50,43 @@ export default function ProductDetail() {
             imagen: imagenSource,
             descripcion
         });
+    };
+
+    const handleBuyNow = () => {
+        if (procesandoCompra) return;
+
+        const rawPrecio = Number(precio || 0);
+        const precioNum = Number.isNaN(rawPrecio) ? 0 : rawPrecio;
+
+        Alert.alert(
+            'Confirmar compra',
+            `¿Deseás comprar "${nombre}" por $ ${precioNum.toLocaleString('es-AR')}?`,
+            [
+                { text: 'Cancelar', style: 'cancel' },
+                {
+                    text: 'Confirmar',
+                    onPress: async () => {
+                        const resultado = await comprarProducto(
+                            {
+                                id,
+                                nombre,
+                                precio: precioNum,
+                                categoria,
+                                imagen: imagenSource,
+                                descripcion
+                            },
+                            1
+                        );
+
+                        if (resultado?.ok) {
+                            Alert.alert('¡Compra exitosa! 🎉', 'Tu pedido fue registrado en Mis Compras.');
+                        } else {
+                            Alert.alert('Error', 'No se pudo registrar la compra. Intentá nuevamente.');
+                        }
+                    }
+                }
+            ]
+        );
     };
 
     const handleToggleFavorite = () => {
@@ -118,6 +161,20 @@ export default function ProductDetail() {
                         onPress={handleAddToCart}
                     >
                         <Text style={styles.buyButtonText}>🛒 Agregar al Carrito</Text>
+                    </Pressable>
+
+                    <Pressable
+                        style={({ pressed }) => [
+                            styles.buyNowButton,
+                            pressed && styles.pressed,
+                            procesandoCompra && styles.buttonDisabled
+                        ]}
+                        onPress={handleBuyNow}
+                        disabled={procesandoCompra}
+                    >
+                        <Text style={styles.buyNowButtonText}>
+                            {procesandoCompra ? 'Procesando...' : '⚡ Comprar ahora'}
+                        </Text>
                     </Pressable>
                 </View>
             </ScrollView>

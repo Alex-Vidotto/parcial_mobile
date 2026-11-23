@@ -17,11 +17,14 @@ export default function Carrito() {
         actualizarCantidad,
         eliminarDelCarrito,
         finalizarCompra,
+        procesandoCompra,
         total,
         cantidadTotal
     } = useContext(CartContext);
 
     const handleCheckout = () => {
+        if (procesandoCompra) return;
+
         Alert.alert(
             'Finalizar compra',
             `¿Deseás confirmar tu compra por un total de $ ${total.toLocaleString('es-AR')}?`,
@@ -30,8 +33,12 @@ export default function Carrito() {
                 {
                     text: 'Confirmar',
                     onPress: async () => {
-                        await finalizarCompra();
-                        Alert.alert('¡Compra exitosa! 🎉', 'Tu pedido fue procesado con éxito.');
+                        const resultado = await finalizarCompra();
+                        if (resultado?.ok) {
+                            Alert.alert('¡Compra exitosa! 🎉', 'Tu pedido fue registrado en Mis Compras.');
+                        } else {
+                            Alert.alert('Error', 'No se pudo registrar la compra. Intentá nuevamente.');
+                        }
                     }
                 }
             ]
@@ -124,11 +131,14 @@ export default function Carrito() {
                     <Pressable
                         style={({ pressed }) => [
                             styles.checkoutButton,
-                            pressed && styles.buttonPressed
+                            (pressed || procesandoCompra) && styles.buttonPressed
                         ]}
                         onPress={handleCheckout}
+                        disabled={procesandoCompra}
                     >
-                        <Text style={styles.checkoutButtonText}>Finalizar compra</Text>
+                        <Text style={styles.checkoutButtonText}>
+                            {procesandoCompra ? 'Procesando...' : 'Finalizar compra'}
+                        </Text>
                     </Pressable>
                 </View>
             )}

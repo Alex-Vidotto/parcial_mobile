@@ -1,4 +1,4 @@
-import { createContext, useState, useEffect } from 'react';
+import { createContext, useState, useEffect, useCallback, useRef } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 
@@ -6,11 +6,72 @@ export const CartContext = createContext(null);
 
 const CART_KEY = '@tienda:cart';
 const PURCHASES_KEY = '@tienda:compras';
+const ORDERS_KEY = '@tienda:pedidos';
+
+function ordenarPedidos(lista) {
+    return [...lista].sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+}
+
+function armarPedido(items) {
+    const ahora = new Date();
+    const timestamp = ahora.getTime();
+    const dia = String(ahora.getDate()).padStart(2, '0');
+    const mes = String(ahora.getMonth() + 1).padStart(2, '0');
+    const anio = ahora.getFullYear();
+    const horas = String(ahora.getHours()).padStart(2, '0');
+    const minutos = String(ahora.getMinutes()).padStart(2, '0');
+
+    const productos = items.map((item) => {
+        const rawPrecio = Number(item.precio ?? item.price ?? 0);
+        const precioUnitario = Number.isNaN(rawPrecio) ? 0 : rawPrecio;
+        const cantidad = Number(item.cantidad) > 0 ? Number(item.cantidad) : 1;
+
+        return {
+            id: String(item.id),
+            nombre: item.nombre || item.title || 'Producto',
+            precioUnitario,
+            cantidad,
+            subtotal: precioUnitario * cantidad,
+            imagen: typeof item.imagen === 'string' ? item.imagen : (item.imagen?.uri || '')
+        };
+    });
+
+    const total = productos.reduce((acc, prod) => acc + prod.subtotal, 0);
+
+    return {
+        id: `PED-${timestamp}`,
+        fecha: `${dia}/${mes}/${anio}`,
+        hora: `${horas}:${minutos}`,
+        timestamp,
+        productos,
+        total
+    };
+}
 
 export function CartProvider({ children }) {
     const [cartItems, setCartItems] = useState([]);
     const [compras, setCompras] = useState({});
+    const [pedidos, setPedidos] = useState([]);
     const [cargandoCarrito, setCargandoCarrito] = useState(true);
+    const [errorPedidos, setErrorPedidos] = useState(null);
+    const [procesandoCompra, setProcesandoCompra] = useState(false);
+    const comprandoRef = useRef(false);
+
+    const recargarPedidos = useCallback(async () => {
+        try {
+            setErrorPedidos(null);
+            const storedOrders = await AsyncStorage.getItem(ORDERS_KEY);
+            if (storedOrders) {
+                const parsed = JSON.parse(storedOrders);
+                setPedidos(Array.isArray(parsed) ? ordenarPedidos(parsed) : []);
+            } else {
+                setPedidos([]);
+            }
+        } catch (error) {
+            console.error('Error al cargar pedidos', error);
+            setErrorPedidos('No se pudo cargar el historial de compras.');
+        }
+    }, []);
 
     useEffect(() => {
         async function load() {
@@ -27,11 +88,12 @@ export function CartProvider({ children }) {
             } catch (error) {
                 console.error('Error al cargar datos del carrito', error);
             } finally {
+                await recargarPedidos();
                 setCargandoCarrito(false);
             }
         }
         load();
-    }, []);
+    }, [recargarPedidos]);
 
     const commitCart = async (next) => {
         const prev = cartItems;
@@ -95,21 +157,53 @@ export function CartProvider({ children }) {
         commitCart([]);
     };
 
-    const finalizarCompra = async () => {
-        const nuevasCompras = { ...compras };
-        cartItems.forEach((item) => {
-            const idStr = String(item.id);
-            nuevasCompras[idStr] = (nuevasCompras[idStr] || 0) + (item.cantidad || 1);
-        });
-
-        setCompras(nuevasCompras);
-        try {
-            await AsyncStorage.setItem(PURCHASES_KEY, JSON.stringify(nuevasCompras));
-        } catch (error) {
-            console.error('Error al guardar compras', error);
+    const registrarCompra = async (items, limpiarCarrito = false) => {
+        if (comprandoRef.current || procesandoCompra || !items || items.length === 0) {
+            return { ok: false };
         }
 
-        await commitCart([]);
+        comprandoRef.current = true;
+        setProcesandoCompra(true);
+
+        try {
+            const nuevoPedido = armarPedido(items);
+            const nuevosPedidos = ordenarPedidos([nuevoPedido, ...pedidos]);
+
+            const nuevasCompras = { ...compras };
+            items.forEach((item) => {
+                const idStr = String(item.id);
+                const cantidad = Number(item.cantidad) > 0 ? Number(item.cantidad) : 1;
+                nuevasCompras[idStr] = (nuevasCompras[idStr] || 0) + cantidad;
+            });
+
+            await AsyncStorage.setItem(ORDERS_KEY, JSON.stringify(nuevosPedidos));
+            await AsyncStorage.setItem(PURCHASES_KEY, JSON.stringify(nuevasCompras));
+
+            setPedidos(nuevosPedidos);
+            setCompras(nuevasCompras);
+            setErrorPedidos(null);
+
+            if (limpiarCarrito) {
+                await AsyncStorage.setItem(CART_KEY, JSON.stringify([]));
+                setCartItems([]);
+            }
+
+            return { ok: true, pedido: nuevoPedido };
+        } catch (error) {
+            console.error('Error al registrar la compra', error);
+            return { ok: false, error };
+        } finally {
+            comprandoRef.current = false;
+            setProcesandoCompra(false);
+        }
+    };
+
+    const finalizarCompra = async () => {
+        return await registrarCompra(cartItems, true);
+    };
+
+    const comprarProducto = async (producto, cantidad = 1) => {
+        return await registrarCompra([{ ...producto, cantidad }], false);
     };
 
     const obtenerVecesComprado = (id) => {
@@ -130,12 +224,17 @@ export function CartProvider({ children }) {
         <CartContext.Provider
             value={{
                 cartItems,
+                pedidos,
                 cargandoCarrito,
+                errorPedidos,
+                procesandoCompra,
                 agregarAlCarrito,
                 eliminarDelCarrito,
                 actualizarCantidad,
                 vaciarCarrito,
                 finalizarCompra,
+                comprarProducto,
+                recargarPedidos,
                 obtenerVecesComprado,
                 total,
                 cantidadTotal

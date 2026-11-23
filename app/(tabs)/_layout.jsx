@@ -101,6 +101,21 @@ export default function TabsLayout() {
             />
 
             <Tabs.Screen
+                name="mis-compras"
+                options={{
+                    title: 'Mis Compras',
+                    tabBarLabel: 'Mis Compras',
+                    tabBarIcon: ({ color, size, focused }) => (
+                        <Ionicons
+                            name={focused ? 'cube' : 'cube-outline'}
+                            size={size}
+                            color={color}
+                        />
+                    )
+                }}
+            />
+
+            <Tabs.Screen
                 name="perfil"
                 options={{
                     title: 'Perfil',

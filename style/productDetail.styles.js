@@ -105,6 +105,20 @@ export const styles = StyleSheet.create({
         fontWeight: '700',
         color: colors.white
     },
+    buyNowButton: {
+        backgroundColor: colors.violet,
+        paddingVertical: 15,
+        borderRadius: 12,
+        alignItems: 'center'
+    },
+    buyNowButtonText: {
+        fontSize: 16,
+        fontWeight: '700',
+        color: colors.white
+    },
+    buttonDisabled: {
+        opacity: 0.6
+    },
     pressed: {
         opacity: 0.8
     }
